@@ -1,0 +1,7 @@
+/* This is the LESS sketch style template */
+/*
+CONTEXT: <%= JSON.stringify( data, undefined, "   " ) %>
+*/
+
+<% _.each( _.keys(data.colors), function( color ){ %>@color-<%= color %>: <%= data.colors[ color ] %>;
+<% }); %>
