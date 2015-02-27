@@ -4,9 +4,9 @@ CONTEXT: <%= JSON.stringify( data, undefined, "   " ) %>
 */
 <% _.each( _.keys( data.colors ), function( color ){ %>@color-<%= color %>: <%= data.colors[ color ] %>;
 <% }); %>
-<% _.each( _.keys( data.backgrounds ), function( bg ) { %>
-<% var background = data.backgrounds[ bg ]; %>
-.background-<%= bg %>() {
+<% _.each( _.keys( data.mixins ), function( name ) { %>
+<% var background = data.mixins[ name ].backgrounds; %>
+.<%= name %>() {
 <% if (background.gradients){ %>    background-image: <%= background.gradients %>;<% } %>
 <% if (background.color){ %>    background-color: <%= background.color %>;<% } %>
 }

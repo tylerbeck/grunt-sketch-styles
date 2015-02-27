@@ -230,9 +230,17 @@ module.exports = function( grunt ) {
                 break;
 
             case "background":
-                var bgs = getBackgrounds( obj );
-                context.backgrounds = {};
-                context.backgrounds[ name.replace("background-","") ] = bgs;
+                context.mixins = {};
+                context.mixins[ name ] = {
+                    backgrounds: getBackgrounds( obj )
+                };
+                break;
+
+            default:
+                context.mixins = {};
+                context.mixins[ name ] = {
+                    backgrounds: getBackgrounds( obj )
+                };
                 break;
         }
 
