@@ -14,6 +14,8 @@ module.exports = function( grunt ) {
     var _ = require( 'lodash' );
     var path = require( 'path' );
     var spawn = require( 'child_process' ).spawn;
+    var Point = require( '../lib/Point' );
+    var Vector = require( '../lib/Vector' );
 
     // Please see the Grunt documentation for more information regarding task
     // creation: http://gruntjs.com/creating-tasks
@@ -62,7 +64,7 @@ module.exports = function( grunt ) {
         });
 
         proc.on('close', function( code ) {
-            console.log( 'sketchtool dump exited with code: '+code );
+            grunt.verbose.writeln( 'sketchtool dump exited with code: '+code );
             if ( error !== "" ){
                 deferred.reject( error );
             }
@@ -80,73 +82,138 @@ module.exports = function( grunt ) {
         return objProp( obj, 'value.fills.<items>' );
     }
 
-    function getAngle( obj ){
-        var from = objProp( obj, 'gradient.from' );
-        var to = objProp( obj, 'gradient.to' );
-        var angle = 0;
-        if ( from && to ){
-            var x = to.x - from.x;
-            var y = to.y - from.y;
-            var rads = Math.atan2( x, y );
-            angle = Math.round( 1000 * (rads * 180 / Math.PI) ) / 1000;
+    function getGradientData( obj ){
+        var gradient = {
+            angle: 0,
+            stops: [],
+            from: {
+                x: 0.5,
+                y: 0.5
+            }
+        };
+
+        var p1 = objProp( obj, 'gradient.from' );
+        var p2 = objProp( obj, 'gradient.to' );
+        var stops = objProp( obj, 'gradient.stops.<items>' ) || [];
+
+
+        if ( p1 && p2 && stops.length > 0 ){
+            var from = new Point( p1.x, p1.y );
+            var to = new Point( p2.x, p2.y );
+            var v = to.subtract( from ).toVector();
+            gradient.from.x = p1.x;
+            gradient.from.y = p1.y;
+            gradient.angle = Math.round( 1000 * (90 + v.angle * 180 / Math.PI) ) / 1000;
+            gradient.stops = [];
+            stops.forEach( function( stop ) {
+                var obj = {};
+                obj.color = objProp( stop, 'color.value' ) || 'rgba(0,0,0,0)';
+                obj.position = Math.round( 100 * parseFloat( objProp( stop, 'position' ) ) );
+                gradient.stops.push( obj );
+            });
+
         }
 
-        return angle;
+        return gradient;
     }
 
-    function getGradient( obj ){
-        var gradient = {};
+    function getLinearGradient( obj ){
+        grunt.verbose.writeln('getLinearGradient');
+
+        var gradient = getGradientData( obj );
+
+        if ( gradient.stops.length > 0 ){
+            var parts = [ "linear-gradient("+ gradient.angle+ "deg" ];
+            gradient.stops.forEach( function( stop ){
+                parts.push( stop.color + " " + stop.position +"%" );
+            });
+
+            return parts.join(",")+")";
+        }
+
+        return "";
+
+    }
+
+    function getRadialGradient( obj ){
+        grunt.verbose.writeln('getRadialGradient');
+
+        var gradient = getGradientData( obj );
+        var x = (gradient.from.x * 100) + "%";
+        var y = (gradient.from.y * 100) + "%";
+
+        if ( gradient.stops.length > 0 ){
+            var parts = [ "radial-gradient( ellipse farthest-side at "+x+" "+y ];
+            gradient.stops.forEach( function( stop ){
+                parts.push( stop.color + " " + stop.position +"%" );
+            });
+
+            return parts.join(",")+")";
+        }
+
+        return "";
 
     }
 
     function getFirstFillColor( obj ){
-        var backgrounds = getBackgrounds( obj );
-        var value;
-        backgrounds.forEach( function( background ){
-            if ( !value && background.type === 'solid' ){
-                value = background.value;
-            }
-        });
-        return value;
+        return getBackgrounds( obj ).color;
     }
 
     function getBackgrounds( obj ){
-
+        grunt.verbose.writeln('getBackgrounds');
         var list = [];
+        var color;
+
         var fills = getFills( obj );
         if ( fills ){
             for ( var i= 0, l=fills.length; i<l; i++ ){
+                grunt.verbose.writeln('fill: '+i);
                 var fill = fills[ i ];
+                grunt.verbose.writeln('fill.isEnabled: '+fill.isEnabled);
                 if ( fill && fill.isEnabled ){
                     switch( fill.fillType ){
                         case 0:
                             //solid fill
-                            var color = objProp( fill, 'color.value' );
-                            if ( color ){
-                                list.push({
-                                    type: 'solid',
-                                    value: color
-                                });
+                            grunt.verbose.writeln('solid');
+                            var c = objProp( fill, 'color.value' ) || "rgba(0,0,0,0)";
+                            if (!color) {
+                                color = c;
                             }
+                            list.unshift( "linear-gradient(0deg,"+c+","+c+")" );
                             break;
                         case 1:
-                            list.push( {
-                                type: 'linear',
-                                value: {
-                                    angle: getAngle( fill ),
-                                    gradient: getGradient( fill )
+                            //gradient
+                            var gradientType = objProp( fill, 'gradient.gradientType' );
+                            if ( gradientType === 0) {
+                                //linear gradient
+                                grunt.verbose.writeln( 'linear' );
+                                var lgrad = getLinearGradient( fill );
+                                if ( lgrad ) {
+                                    list.unshift( lgrad );
                                 }
-                            } );
+                            } else if ( gradientType === 1) {
+                                    //radial gradient
+                                    grunt.verbose.writeln('radial');
+                                    var rgrad = getRadialGradient( fill );
+                                    if ( rgrad ){
+                                        list.unshift( rgrad );
+                                    }
+                            }
+
                             break;
                     }
                 }
             }
         }
 
-        return list;
+        return {
+            gradients: list.join(","),
+            color: color
+        };
     }
 
-    function parseLayerStyle( obj, parsers ){
+    function parseLayerStyle( obj ){
+        grunt.verbose.writeln('parseLayerStyle');
         var context = {};
         var value = obj.value;
         var name = obj.name;
@@ -164,10 +231,8 @@ module.exports = function( grunt ) {
 
             case "background":
                 var bgs = getBackgrounds( obj );
-                if ( bgs.length ){
-                    context.backgrounds = {};
-                    context.backgrounds[ name.replace("background-","") ] = bgs;
-                }
+                context.backgrounds = {};
+                context.backgrounds[ name.replace("background-","") ] = bgs;
                 break;
         }
 
@@ -213,6 +278,7 @@ module.exports = function( grunt ) {
                 results.forEach( function( result ){
                     _.merge( context, parseStyles( result ) );
                 } );
+                grunt.verbose.writeln( 'context:\n'+ JSON.stringify( context, undefined, "   " ) );
                 grunt.file.write( dest, template( context ) );
             };
         }
