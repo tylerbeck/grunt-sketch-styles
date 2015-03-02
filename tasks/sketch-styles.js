@@ -78,10 +78,6 @@ module.exports = function( grunt ) {
         return deferred.promise;
     }
 
-    function getFills( obj ){
-        return objProp( obj, 'value.fills.<items>' );
-    }
-
     function getGradientData( obj ){
         var gradient = {
             angle: 0,
@@ -155,7 +151,7 @@ module.exports = function( grunt ) {
 
     }
 
-    function getFirstFillColor( obj ){
+    function getFillColor( obj ){
         return getBackgrounds( obj ).color;
     }
 
@@ -164,7 +160,7 @@ module.exports = function( grunt ) {
         var list = [];
         var color;
 
-        var fills = getFills( obj );
+        var fills = objProp( obj, 'value.fills.<items>' );
         if ( fills ){
             for ( var i= 0, l=fills.length; i<l; i++ ){
                 grunt.verbose.writeln('fill: '+i);
@@ -192,12 +188,12 @@ module.exports = function( grunt ) {
                                     list.unshift( lgrad );
                                 }
                             } else if ( gradientType === 1) {
-                                    //radial gradient
-                                    grunt.verbose.writeln('radial');
-                                    var rgrad = getRadialGradient( fill );
-                                    if ( rgrad ){
-                                        list.unshift( rgrad );
-                                    }
+                                //radial gradient
+                                grunt.verbose.writeln('radial');
+                                var rgrad = getRadialGradient( fill );
+                                if ( rgrad ){
+                                    list.unshift( rgrad );
+                                }
                             }
 
                             break;
@@ -212,6 +208,59 @@ module.exports = function( grunt ) {
         };
     }
 
+    function getBorders( obj ){
+        grunt.verbose.writeln('getBorders');
+        var list = [];
+
+        var borders = objProp( obj, 'value.borders.<items>' );
+        if ( borders ){
+            for ( var i= 0, l=borders.length; i<l; i++ ){
+                grunt.verbose.writeln('border: '+i);
+                var border = borders[ i ];
+                grunt.verbose.writeln('border.isEnabled: '+border.isEnabled);
+                if ( border && border.isEnabled ){
+                    var bObj = {
+                        thickness: objProp( border, 'thickness' ) || 0,
+                        color: 'rgba( 0,0,0,0 )',
+                        image: undefined
+                    };
+
+                    switch( border.fillType ){
+                        case 0:
+                            //solid fill
+                            grunt.verbose.writeln('solid');
+                            var c = objProp( border, 'color.value' ) || "rgba(0,0,0,0)";
+                            bObj.color = c;
+                            break;
+                        case 1:
+                            //gradient
+                            var gradientType = objProp( border, 'gradient.gradientType' );
+                            if ( gradientType === 0) {
+                                //linear gradient
+                                grunt.verbose.writeln( 'linear' );
+                                var lgrad = getLinearGradient( border );
+                                if ( lgrad ) {
+                                    bObj.image = lgrad;
+                                }
+                            } else if ( gradientType === 1) {
+                                //radial gradient
+                                grunt.verbose.writeln('radial');
+                                var rgrad = getRadialGradient( border );
+                                if ( rgrad ){
+                                    bObj.image = rgrad;
+                                }
+                            }
+
+                            break;
+                    }
+                    list.push( bObj );
+                }
+            }
+        }
+
+        return list;
+    }
+
     function parseLayerStyle( obj ){
         grunt.verbose.writeln('parseLayerStyle');
         var context = {};
@@ -222,7 +271,7 @@ module.exports = function( grunt ) {
         switch ( nameParts[0] ){
             case "color":
                 //for color layers, set value to first enabled fill color.
-                var color = getFirstFillColor( obj );
+                var color = getFillColor( obj );
                 if ( color ){
                     context.colors = {};
                     context.colors[ name.replace("color-","") ] = color;
@@ -239,7 +288,8 @@ module.exports = function( grunt ) {
             default:
                 context.mixins = {};
                 context.mixins[ name ] = {
-                    backgrounds: getBackgrounds( obj )
+                    backgrounds: getBackgrounds( obj ),
+                    borders: getBorders( obj )
                 };
                 break;
         }

@@ -9,6 +9,8 @@ CONTEXT: <%= JSON.stringify( data, undefined, "   " ) %>
 .<%= name %>() {
 <% if (background.gradients){ %>    background-image: <%= background.gradients %>;<% } %>
 <% if (background.color){ %>    background-color: <%= background.color %>;<% } %>
+<% _.each( _.keys( background.borders ), function( border ){ %>@color-<%= color %>: <%= data.colors[ color ] %>;
+<% }); %>
 }
 <% }) %>
 
